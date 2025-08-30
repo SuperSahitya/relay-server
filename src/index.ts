@@ -10,74 +10,87 @@ import { Server, Socket } from "socket.io";
 import { socketAuthMiddleware } from "./middlewares/socketAuth";
 import { AuthenticatedSocket } from "./types";
 import { registerChatHandlers, registerRoomHandler } from "./sockets/handlers";
+import { authLimiter, generalLimiter } from "./middlewares/rateLimit";
 
 const PORT = process.env.PORT || 5000;
 const app = express();
 const httpServer = createServer(app);
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(",");
 
-const io = new Server(httpServer, {
-  cors: {
-    origin:
-      process.env.NODE_ENV === "production"
-        ? ALLOWED_ORIGINS
-        : "http://localhost:3000",
-    credentials: true,
-  },
-});
+async function startServer() {
+  try {
+    const io = new Server(httpServer, {
+      cors: {
+        origin:
+          process.env.NODE_ENV === "production"
+            ? ALLOWED_ORIGINS
+            : "http://localhost:3000",
+        credentials: true,
+      },
+    });
 
-app.use(
-  cors({
-    origin:
-      process.env.NODE_ENV === "production"
-        ? ALLOWED_ORIGINS
-        : "http://localhost:3000",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
+    app.use(
+      cors({
+        origin:
+          process.env.NODE_ENV === "production"
+            ? ALLOWED_ORIGINS
+            : "http://localhost:3000",
+        methods: ["GET", "POST", "PUT", "DELETE"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+        credentials: true,
+      })
+    );
 
-app.all("/api/auth/{*any}", toNodeHandler(auth));
+    app.use(generalLimiter);
+    app.use("/api/auth", authLimiter);
 
-app.use(express.json());
+    app.all("/api/auth/{*any}", toNodeHandler(auth));
 
-io.use(socketAuthMiddleware);
+    app.use(express.json());
 
-const apiRouter = Router();
+    io.use(socketAuthMiddleware);
 
-apiRouter.get("/", (req: Request, res: Response) => {
-  res.json({ status: `server live at PORT:${PORT}` });
-});
+    const apiRouter = Router();
 
-app.use("/api/v1", apiRouter);
+    apiRouter.get("/", (req: Request, res: Response) => {
+      res.json({ status: `server live at PORT:${PORT}` });
+    });
 
-io.on("connection", (socket: Socket) => {
-  const authSocket = socket as AuthenticatedSocket;
-  const socketLogger = logger.child({
-    module: "socketConnection",
-    userId: authSocket.userId,
-    email: authSocket.email,
-    socketId: authSocket.id,
-  });
+    app.use("/api/v1", apiRouter);
 
-  socketLogger.info(`Authenticated user connected`);
+    io.on("connection", (socket: Socket) => {
+      const authSocket = socket as AuthenticatedSocket;
+      const socketLogger = logger.child({
+        module: "socketConnection",
+        userId: authSocket.userId,
+        email: authSocket.email,
+        socketId: authSocket.id,
+      });
 
-  registerChatHandlers(io, authSocket);
-  registerRoomHandler(io, authSocket);
+      socketLogger.info(`Authenticated user connected`);
 
-  socket.on("disconnect", () => {
-    socketLogger.info(`User disconnected`);
-  });
-});
+      registerChatHandlers(io, authSocket);
+      registerRoomHandler(io, authSocket);
 
-httpServer.listen(PORT, () => {
-  logger.info(
-    {
-      port: PORT,
-      environment: process.env.NODE_ENV || "development",
-      nodeVersion: process.version,
-    },
-    "Server started successfully"
-  );
-});
+      socket.on("disconnect", () => {
+        socketLogger.info(`User disconnected`);
+      });
+    });
+
+    httpServer.listen(PORT, () => {
+      logger.info(
+        {
+          port: PORT,
+          environment: process.env.NODE_ENV || "development",
+          nodeVersion: process.version,
+        },
+        "Server started successfully"
+      );
+    });
+  } catch (error) {
+    logger.error({ error }, "Failed to start server");
+    process.exit(1);
+  }
+}
+
+startServer();
