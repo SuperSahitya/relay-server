@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import crypto from "node:crypto";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -63,4 +64,14 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").$defaultFn(
     () => /* @__PURE__ */ new Date()
   ),
+});
+
+export const friend = pgTable("friend", {
+  id: text("id").primaryKey().$defaultFn(()=> crypto.randomUUID()),
+  userId: text("userId")
+    .notNull()
+    .references(() => user.id),
+  friendId: text("friendId")
+    .notNull()
+    .references(() => user.id),
 });
