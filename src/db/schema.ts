@@ -1,3 +1,4 @@
+import { pgEnum } from "drizzle-orm/pg-core";
 import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
 
@@ -67,11 +68,44 @@ export const verification = pgTable("verification", {
 });
 
 export const friend = pgTable("friend", {
-  id: text("id").primaryKey().$defaultFn(()=> crypto.randomUUID()),
-  userId: text("userId")
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
     .notNull()
     .references(() => user.id),
-  friendId: text("friendId")
+  friendId: text("friend_id")
     .notNull()
     .references(() => user.id),
+  createdAt: timestamp("created_at").$defaultFn(
+    () => /* @__PURE__ */ new Date()
+  ),
+  updatedAt: timestamp("updated_at").$defaultFn(
+    () => /* @__PURE__ */ new Date()
+  ),
+});
+
+export const friendRequestStatus = pgEnum("status", [
+  "accepted",
+  "pending",
+  "declined",
+]);
+
+export const friendRequest = pgTable("friend_request", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id),
+  friendId: text("friend_id")
+    .notNull()
+    .references(() => user.id),
+  createdAt: timestamp("created_at").$defaultFn(
+    () => /* @__PURE__ */ new Date()
+  ),
+  updatedAt: timestamp("updated_at").$defaultFn(
+    () => /* @__PURE__ */ new Date()
+  ),
+  status: friendRequestStatus().default("pending"),
 });
