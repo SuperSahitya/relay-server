@@ -11,6 +11,7 @@ import { socketAuthMiddleware } from "./middlewares/socketAuth";
 import { AuthenticatedSocket } from "./types";
 import { registerChatHandlers, registerRoomHandler } from "./sockets/handlers";
 import { authLimiter, generalLimiter } from "./middlewares/rateLimit";
+import friendRouter from "./routes/friendRouter";
 
 const PORT = process.env.PORT || 5000;
 const app = express();
@@ -55,6 +56,8 @@ async function startServer() {
     apiRouter.get("/", (req: Request, res: Response) => {
       res.json({ status: `server live at PORT:${PORT}` });
     });
+
+    apiRouter.use(friendRouter);
 
     app.use("/api/v1", apiRouter);
 
