@@ -1,6 +1,8 @@
 import { Server, Socket } from "socket.io";
 import { AuthenticatedSocket } from "../types";
 import logger from "../lib/logger";
+import { kafka } from "../kafka";
+import { Producer } from "kafkajs";
 
 export function registerChatHandlers(io: Server, socket: AuthenticatedSocket) {
   const chatLogger = logger.child({
@@ -70,4 +72,34 @@ export function registerRoomHandler(io: Server, socket: AuthenticatedSocket) {
   });
 }
 
+export async function kafkaHandler(socket: AuthenticatedSocket) {
+  const chatLogger = logger.child({
+    module: "chatHandlers",
+    socketId: socket.id,
+    userEmail: socket.email,
+  });
+  let producer: Producer | null = null;
+  try {
+    producer = kafka.producer();
+    await producer.connect();
 
+    if (!producer) {
+      throw new Error("No Producer Created for Kafka.");
+    }
+
+    socket.on(
+      "message",
+      async ({ id, message }: { id: string; message: string }) => {
+        await producer!.send({
+          topic: "message",
+          messages: [{ key: id, value: message }],
+        });
+      }
+    );
+  } catch (error) {
+  } finally {
+    if (producer) {
+      await producer.disconnect();
+    }
+  }
+}
