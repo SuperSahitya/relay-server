@@ -1,9 +1,7 @@
-import RedisClient from "ioredis";
 import { rateLimit } from "express-rate-limit";
 import { RedisStore, type RedisReply } from "rate-limit-redis";
 import logger from "../lib/logger";
-
-const client = new RedisClient(process.env.REDIS_URL!);
+import { redis } from "../lib/redis";
 
 export const generalLimiter = rateLimit({
   windowMs: Number(process.env.RATE_LIMIT_WINDOW!),
@@ -13,7 +11,7 @@ export const generalLimiter = rateLimit({
   message: { error: "Too many requests, please try again later." },
   store: new RedisStore({
     sendCommand: (command: string, ...args: string[]) =>
-      client.call(command, ...args) as Promise<RedisReply>,
+      redis.call(command, ...args) as Promise<RedisReply>,
   }),
   handler: (req, res) => {
     logger.warn(
@@ -39,7 +37,7 @@ export const authLimiter = rateLimit({
   message: { error: "Too many requests, please try again later." },
   store: new RedisStore({
     sendCommand: (command: string, ...args: string[]) =>
-      client.call(command, ...args) as Promise<RedisReply>,
+      redis.call(command, ...args) as Promise<RedisReply>,
   }),
   skipSuccessfulRequests: true,
   handler: (req, res) => {
