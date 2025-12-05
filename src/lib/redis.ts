@@ -9,7 +9,7 @@ redis.on('error', (err) => redisLogger.error({ err }, 'Redis error'));
 redis.on('connect', () => redisLogger.info('Redis connected'));
 
 export async function setUserSocket(userId: string, socketId: string) {
-  await redis.set(`user:${userId}:socket`, socketId);
+  await redis.set(`user:${userId}:socket`, socketId, "EX", 86400);
   redisLogger.debug({ userId, socketId }, 'User socket mapped');
 }
 

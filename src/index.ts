@@ -12,6 +12,8 @@ import { AuthenticatedSocket } from "./types";
 import { registerChatHandlers, registerRoomHandler } from "./sockets/handlers";
 import { authLimiter, generalLimiter } from "./middlewares/rateLimit";
 import friendRouter from "./routes/friendRouter";
+import { redis, removeUserSocket, setUserSocket } from "./lib/redis";
+import { createAdapter } from "@socket.io/redis-adapter";
 
 const PORT = process.env.PORT || 5000;
 const app = express();
@@ -20,6 +22,12 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(",");
 
 async function startServer() {
   try {
+    const pubClient = redis;
+    const subClient = redis.duplicate();
+
+    pubClient.connect();
+    subClient.connect();
+
     const io = new Server(httpServer, {
       cors: {
         origin:
@@ -28,6 +36,7 @@ async function startServer() {
             : "http://localhost:3000",
         credentials: true,
       },
+      adapter: createAdapter(pubClient, subClient),
     });
 
     app.use(
@@ -61,7 +70,7 @@ async function startServer() {
 
     app.use("/api/v1", apiRouter);
 
-    io.on("connection", (socket: Socket) => {
+    io.on("connection", async (socket: Socket) => {
       const authSocket = socket as AuthenticatedSocket;
       const socketLogger = logger.child({
         module: "socketConnection",
@@ -72,11 +81,13 @@ async function startServer() {
 
       socketLogger.info(`Authenticated user connected`);
 
-      registerChatHandlers(io, authSocket);
-      registerRoomHandler(io, authSocket);
+      await setUserSocket(authSocket.userId, authSocket.id);
 
-      socket.on("disconnect", () => {
+      registerChatHandlers(io, authSocket);
+
+      socket.on("disconnect", async () => {
         socketLogger.info(`User disconnected`);
+        await removeUserSocket(authSocket.userId);
       });
     });
 
