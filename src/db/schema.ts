@@ -1,4 +1,5 @@
 import { pgEnum } from "drizzle-orm/pg-core";
+import { unique } from "drizzle-orm/pg-core";
 import { index } from "drizzle-orm/pg-core";
 import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
@@ -68,23 +69,27 @@ export const verification = pgTable("verification", {
   ),
 });
 
-export const friend = pgTable("friend", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id),
-  friendId: text("friend_id")
-    .notNull()
-    .references(() => user.id),
-  createdAt: timestamp("created_at").$defaultFn(
-    () => /* @__PURE__ */ new Date()
-  ),
-  updatedAt: timestamp("updated_at").$defaultFn(
-    () => /* @__PURE__ */ new Date()
-  ),
-});
+export const friend = pgTable(
+  "friend",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userA: text("user_A")
+      .notNull()
+      .references(() => user.id),
+    userB: text("user_B")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at").$defaultFn(
+      () => /* @__PURE__ */ new Date()
+    ),
+    updatedAt: timestamp("updated_at").$defaultFn(
+      () => /* @__PURE__ */ new Date()
+    ),
+  },
+  (table) => [unique().on(table.userA, table.userB)]
+);
 
 export const friendRequestStatus = pgEnum("status", [
   "accepted",
@@ -92,24 +97,28 @@ export const friendRequestStatus = pgEnum("status", [
   "declined",
 ]);
 
-export const friendRequest = pgTable("friend_request", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id),
-  friendId: text("friend_id")
-    .notNull()
-    .references(() => user.id),
-  createdAt: timestamp("created_at").$defaultFn(
-    () => /* @__PURE__ */ new Date()
-  ),
-  updatedAt: timestamp("updated_at").$defaultFn(
-    () => /* @__PURE__ */ new Date()
-  ),
-  status: friendRequestStatus().default("pending"),
-});
+export const friendRequest = pgTable(
+  "friend_request",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    senderId: text("sender_id")
+      .notNull()
+      .references(() => user.id),
+    receiverId: text("receiver_id")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at").$defaultFn(
+      () => /* @__PURE__ */ new Date()
+    ),
+    updatedAt: timestamp("updated_at").$defaultFn(
+      () => /* @__PURE__ */ new Date()
+    ),
+    status: friendRequestStatus().default("pending"),
+  },
+  (table) => [unique().on(table.senderId, table.receiverId)]
+);
 
 export const messages = pgTable(
   "messages",
@@ -129,9 +138,7 @@ export const messages = pgTable(
       () => /* @__PURE__ */ new Date()
     ),
   },
-  (table) => ({
-    conversationIdx: index("conversation_idx").on(table.conversationId),
-  })
+  (table) => [index("conversation_idx").on(table.conversationId)]
 );
 
 export type MessageType = typeof messages.$inferInsert;

@@ -2,79 +2,138 @@ import { and, eq, or, inArray, like } from "drizzle-orm";
 import { db } from "../db/db";
 import { friend, user, friendRequest } from "../db/schema";
 import logger from "../lib/logger";
+import { getUserById } from "./userService";
 
 const friendServiceLogger = logger.child({ module: "friendServiceLogger" });
 
-export async function sendFriendRequest(userId: string, friendId: string) {
+const orderUsers = (userA: string, userB: string) => {
+  return userA < userB ? { userA, userB } : { userB, userA };
+};
+
+export async function sendFriendRequest(senderId: string, receiverId: string) {
   try {
-    if (userId === friendId) {
+    if (senderId === receiverId) {
       return { success: false, message: "Cannot send request to yourself." };
     }
-    const alreadyFriends = await verifyFriends(userId, friendId);
+
+    const friendExists = await getUserById(receiverId);
+    if (!friendExists) {
+      return { success: false, message: "User not found." };
+    }
+
+    const alreadyFriends = await verifyFriends(senderId, receiverId);
     if (alreadyFriends) {
       return { success: false, message: "Already friends." };
     }
+
     const existing = await db
       .select()
       .from(friendRequest)
       .where(
         or(
           and(
-            eq(friendRequest.userId, userId),
-            eq(friendRequest.friendId, friendId)
+            eq(friendRequest.senderId, senderId),
+            eq(friendRequest.receiverId, receiverId)
           ),
           and(
-            eq(friendRequest.userId, friendId),
-            eq(friendRequest.friendId, userId)
+            eq(friendRequest.senderId, receiverId),
+            eq(friendRequest.receiverId, senderId)
           )
         )
       );
     if (existing.length > 0) {
       return { success: false, message: "Friend request already exists." };
     }
-    const data = await db.insert(friendRequest).values({ userId, friendId });
-    return { success: true, data };
+    await db
+      .insert(friendRequest)
+      .values({ senderId: senderId, receiverId: receiverId });
+    return { success: true, message: "Friend request sent successfully." };
   } catch (error) {
+    // issues might arise if both user send request are sent at the same time
     friendServiceLogger.error(error, "Error while sending friend request.");
     return { success: false, error };
   }
 }
 
 export async function handleFriendRequest(
-  userId: string,
-  friendId: string,
-  status: "pending" | "accepted" | "declined"
+  senderId: string,
+  receiverId: string,
+  status: "accepted" | "declined"
 ) {
   try {
-    await db
-      .update(friendRequest)
-      .set({ status })
+    const existingRequest = await db
+      .select()
+      .from(friendRequest)
       .where(
         and(
-          eq(friendRequest.userId, friendId),
-          eq(friendRequest.friendId, userId)
+          eq(friendRequest.senderId, senderId),
+          eq(friendRequest.receiverId, receiverId),
+          eq(friendRequest.status, "pending")
         )
       );
-    if (status === "accepted") {
-      await db.insert(friend).values({ userId, friendId });
+
+    if (existingRequest.length === 0) {
+      return {
+        success: false,
+        message: "Friend request not found or already handled.",
+      };
     }
-    return { success: true };
+
+    const { userA, userB } = orderUsers(senderId, receiverId);
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(friendRequest)
+        .set({ status })
+        .where(
+          and(
+            eq(friendRequest.senderId, senderId),
+            eq(friendRequest.receiverId, receiverId)
+          )
+        );
+
+      if (status === "accepted") {
+        await tx.insert(friend).values({ userA, userB });
+      }
+    });
+
+    return { success: true, message: `Friend request ${status}.` };
   } catch (error) {
     friendServiceLogger.error(error, "Error while handling friend request.");
     return { success: false, error };
   }
 }
 
-export async function removeUser(userId: string, friendId: string) {
+export async function deleteFriend(senderId: string, receiverId: string) {
   try {
-    await db
-      .delete(friend)
-      .where(
-        or(
-          and(eq(friend.userId, userId), eq(friend.friendId, friendId)),
-          and(eq(friend.userId, friendId), eq(friend.friendId, userId))
-        )
-      );
+    const { userA, userB } = orderUsers(senderId, receiverId);
+
+    const friendshipExists = await verifyFriends(senderId, receiverId);
+    if (!friendshipExists) {
+      return { success: false, message: "Friendship does not exist." };
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(friend)
+        .where(and(eq(friend.userA, userA), eq(friend.userB, userB)));
+
+      await tx
+        .delete(friendRequest)
+        .where(
+          or(
+            and(
+              eq(friendRequest.senderId, senderId),
+              eq(friendRequest.receiverId, receiverId)
+            ),
+            and(
+              eq(friendRequest.senderId, receiverId),
+              eq(friendRequest.receiverId, senderId)
+            )
+          )
+        );
+    });
+
     return { success: true };
   } catch (error) {
     friendServiceLogger.error(error, "Error while removing friend.");
@@ -82,19 +141,14 @@ export async function removeUser(userId: string, friendId: string) {
   }
 }
 
-export async function verifyFriends(userId: string, friendId: string) {
+export async function verifyFriends(senderId: string, receiverId: string) {
   try {
+    const { userA, userB } = orderUsers(senderId, receiverId);
     const data = await db
       .selectDistinct()
       .from(friend)
-      .where(
-        or(
-          and(eq(friend.userId, userId), eq(friend.friendId, friendId)),
-          and(eq(friend.userId, friendId), eq(friend.friendId, userId))
-        )
-      );
-    if (data && data.length > 0) return true;
-    return false;
+      .where(and(eq(friend.userA, userA), eq(friend.userB, userB)));
+    return data && data.length > 0;
   } catch (error) {
     friendServiceLogger.error(error, "Error while verifying friend.");
     return false;
@@ -103,53 +157,26 @@ export async function verifyFriends(userId: string, friendId: string) {
 
 export async function getFriends(userId: string) {
   try {
-    const data = await db
-      .selectDistinct()
+    const friendsAsUserA = await db
+      .select({ friendData: user })
       .from(friend)
-      .where(or(eq(friend.userId, userId), eq(friend.friendId, userId)));
+      .innerJoin(user, eq(friend.userB, user.id))
+      .where(eq(friend.userA, userId));
 
-    const friendIds = data.map((d) =>
-      d.userId === userId ? d.friendId : d.userId
-    );
-    if (friendIds.length === 0) return { success: true, data: [] };
-
-    const friends = await db
-      .selectDistinct()
-      .from(user)
-      .where(inArray(user.id, friendIds));
-
-    return { success: true, data: friends };
-  } catch (error) {
-    friendServiceLogger.error(error, "Error while fetching friends.");
-    return { success: false, error };
-  }
-}
-
-export async function searchFriend(userId: string, query: string) {
-  try {
-    const data = await db
-      .selectDistinct()
+    const friendsAsUserB = await db
+      .select({ friendData: user })
       .from(friend)
-      .where(or(eq(friend.userId, userId), eq(friend.friendId, userId)));
+      .innerJoin(user, eq(friend.userA, user.id))
+      .where(eq(friend.userB, userId));
 
-    const friendIds = data.map((d) =>
-      d.userId === userId ? d.friendId : d.userId
-    );
-    if (friendIds.length === 0) return { success: true, data: [] };
+    const allFriends = [
+      ...friendsAsUserA.map((f) => f.friendData),
+      ...friendsAsUserB.map((f) => f.friendData),
+    ];
 
-    const friends = await db
-      .selectDistinct()
-      .from(user)
-      .where(
-        and(
-          inArray(user.id, friendIds),
-          or(like(user.name, `%${query}%`), like(user.email, `%${query}%`))
-        )
-      );
-
-    return { success: true, data: friends };
+    return { success: true, data: allFriends };
   } catch (error) {
-    friendServiceLogger.error(error, "Error while searching friends.");
-    return { success: false, error };
+    friendServiceLogger.error({ error }, "Error while fetching friends.");
+    return { success: false, message: "Failed to fetch friends." };
   }
 }
