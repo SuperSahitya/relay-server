@@ -2,6 +2,7 @@ import { consumer } from "../kafka";
 import logger from "../lib/logger";
 import { db } from "../db/db";
 import { messages, MessageType } from "../db/schema";
+import { and, desc, eq, lt } from "drizzle-orm";
 
 const consumerLogger = logger.child({ module: "messageConsumer" });
 
@@ -37,5 +38,49 @@ export async function stopMessageConsumer() {
     consumerLogger.info("Consumer disconnected");
   } catch (error) {
     consumerLogger.error({ error }, "Error disconnecting consumer");
+  }
+}
+
+export async function fetchMessages(
+  userA: string,
+  userB: string,
+  limit: number = 50,
+  beforeTime?: Date
+) {
+  try {
+    const conversationId = [userA, userB].sort().join("_");
+
+    let query = db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+
+    if (beforeTime) {
+      query = db
+        .select()
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, conversationId),
+            lt(messages.createdAt, beforeTime)
+          )
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(limit);
+    }
+
+    const messageList = await query;
+
+    return {
+      success: true,
+      data: messageList.reverse(),
+      hasMore: messageList.length === limit,
+      cursor: messageList.length > 0 ? messageList[0].createdAt : null,
+    };
+  } catch (error) {
+    consumerLogger.error({ error }, "Error fetching messages");
+    return { success: false, message: "Failed to fetch messages" };
   }
 }

@@ -15,7 +15,7 @@ import friendRouter from "./routes/friendRouter";
 import { redis, removeUserSocket, setUserSocket } from "./lib/redis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { initializeProducer } from "./kafka";
-import { startMessageConsumer } from "./services/messageConsumerService";
+import { startMessageConsumer } from "./services/messageService";
 
 const PORT = process.env.PORT || 5000;
 const app = express();
