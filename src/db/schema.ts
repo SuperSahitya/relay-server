@@ -1,4 +1,5 @@
 import { pgEnum } from "drizzle-orm/pg-core";
+import { index } from "drizzle-orm/pg-core";
 import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import crypto from "node:crypto";
 
@@ -109,3 +110,28 @@ export const friendRequest = pgTable("friend_request", {
   ),
   status: friendRequestStatus().default("pending"),
 });
+
+export const messages = pgTable(
+  "messages",
+  {
+    message_id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    conversationId: text("conversation_id").notNull(),
+    senderId: text("sender_id")
+      .notNull()
+      .references(() => user.id),
+    receiverId: text("receiver_id")
+      .notNull()
+      .references(() => user.id),
+    message: text().notNull(),
+    createdAt: timestamp("created_at").$defaultFn(
+      () => /* @__PURE__ */ new Date()
+    ),
+  },
+  (table) => ({
+    conversationIdx: index("conversation_idx").on(table.conversationId),
+  })
+);
+
+export type MessageType = typeof messages.$inferInsert;

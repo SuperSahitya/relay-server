@@ -1,8 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { AuthenticatedSocket } from "../types";
 import logger from "../lib/logger";
-import { kafka } from "../kafka";
-import { Producer } from "kafkajs";
+import { producer } from "../kafka";
 
 export function registerChatHandlers(io: Server, socket: AuthenticatedSocket) {
   const chatLogger = logger.child({
@@ -11,7 +10,7 @@ export function registerChatHandlers(io: Server, socket: AuthenticatedSocket) {
     userEmail: socket.email,
   });
 
-  socket.on("chat_message", ({ receiverId, message }) => {
+  socket.on("chat_message", async ({ receiverId, message }) => {
     try {
       if (!receiverId || !message?.trim()) {
         chatLogger.warn(
@@ -26,27 +25,33 @@ export function registerChatHandlers(io: Server, socket: AuthenticatedSocket) {
           receiverId,
           message: message.trim(),
           sender: socket.email,
-          senderId: socket.userId
+          senderId: socket.userId,
         },
         "Chat message received"
       );
 
+      const conversationId = [receiverId, socket.userId].sort().join("_");
+
       const messageData = {
-        id: Date.now().toString(),
+        conversationId,
+        senderId: socket.userId,
+        receiverId,
         message: message.trim(),
-        sender: socket.email,
-        timestamp: new Date().toISOString(),
       };
 
       io.to(receiverId).emit("chat_message", messageData);
 
-      chatLogger.debug(
-        {
-          messageId: messageData.id,
-          receiverId,
-        },
-        "Chat message broadcasted to room"
-      );
+      await producer.send({
+        topic: "chat-messages",
+        messages: [
+          {
+            key: conversationId,
+            value: JSON.stringify(messageData),
+          },
+        ],
+      });
+
+      chatLogger.debug(messageData, "Chat message broadcasted to room");
     } catch (error) {
       chatLogger.error(
         { senderId: socket.id, receiverId, message },

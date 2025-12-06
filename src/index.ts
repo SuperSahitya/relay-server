@@ -9,11 +9,13 @@ import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 import { socketAuthMiddleware } from "./middlewares/socketAuth";
 import { AuthenticatedSocket } from "./types";
-import { registerChatHandlers, registerRoomHandler } from "./sockets/handlers";
+import { registerChatHandlers } from "./sockets/handlers";
 import { authLimiter, generalLimiter } from "./middlewares/rateLimit";
 import friendRouter from "./routes/friendRouter";
 import { redis, removeUserSocket, setUserSocket } from "./lib/redis";
 import { createAdapter } from "@socket.io/redis-adapter";
+import { initializeProducer } from "./kafka";
+import { startMessageConsumer } from "./services/messageConsumerService";
 
 const PORT = process.env.PORT || 5000;
 const app = express();
@@ -25,8 +27,11 @@ async function startServer() {
     const pubClient = redis;
     const subClient = redis.duplicate();
 
-    pubClient.connect();
-    subClient.connect();
+    await pubClient.connect();
+    await subClient.connect();
+
+    await initializeProducer();
+    await startMessageConsumer();
 
     const io = new Server(httpServer, {
       cors: {
