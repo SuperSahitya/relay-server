@@ -1,10 +1,10 @@
 import type { Request, Response } from "express";
-import { addFriend, getFriends } from "../services/friendService";
+import { sendFriendRequest, getFriends } from "../services/friendService";
 
 export async function addFriendController(req: Request, res: Response) {
   const userId = req.user!.id;
   const { friendId } = req.body;
-  const result = await addFriend(userId, friendId);
+  const result = await sendFriendRequest(userId, friendId);
   if (result.success) {
     return res.status(200).json(result);
   } else {
