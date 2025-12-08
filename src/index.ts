@@ -11,7 +11,11 @@ import { socketAuthMiddleware } from "./middlewares/socketAuth";
 import { AuthenticatedSocket } from "./types";
 import { registerChatHandlers } from "./sockets/handlers";
 import { authLimiter, generalLimiter } from "./middlewares/rateLimit";
+import { errorMiddleware } from "./middlewares/error";
 import friendRouter from "./routes/friendRouter";
+import messageRouter from "./routes/messageRouter";
+import searchRouter from "./routes/searchRouter";
+import userRouter from "./routes/userRouter";
 import { redis, removeUserSocket, setUserSocket } from "./lib/redis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { initializeProducer } from "./kafka";
@@ -72,8 +76,13 @@ async function startServer() {
     });
 
     apiRouter.use(friendRouter);
+    apiRouter.use(messageRouter);
+    apiRouter.use(searchRouter);
+    apiRouter.use(userRouter);
 
     app.use("/api/v1", apiRouter);
+
+    app.use(errorMiddleware);
 
     io.on("connection", async (socket: Socket) => {
       const authSocket = socket as AuthenticatedSocket;

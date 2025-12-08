@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import logger from "../lib/logger";
 
-function errorMiddleware(
+export function errorMiddleware(
   err: any,
   req: Request,
   res: Response,
