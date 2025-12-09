@@ -4,6 +4,8 @@ import {
   getFriends,
   handleFriendRequest,
   deleteFriend,
+  getReceivedFriendRequests,
+  getSentFriendRequests,
 } from "../services/friendService";
 
 export async function sendFriendRequestController(req: Request, res: Response) {
@@ -69,6 +71,32 @@ export async function deleteFriendController(req: Request, res: Response) {
 export async function getFriendsController(req: Request, res: Response) {
   const userId = req.user!.id;
   const result = await getFriends(userId);
+  if (result.success) {
+    return res.status(200).json(result);
+  } else {
+    return res.status(400).json(result);
+  }
+}
+
+export async function getReceivedFriendRequestsController(
+  req: Request,
+  res: Response
+) {
+  const userId = req.user!.id;
+  const result = await getReceivedFriendRequests(userId);
+  if (result.success) {
+    return res.status(200).json(result);
+  } else {
+    return res.status(400).json(result);
+  }
+}
+
+export async function getSentFriendRequestsController(
+  req: Request,
+  res: Response
+) {
+  const userId = req.user!.id;
+  const result = await getSentFriendRequests(userId);
   if (result.success) {
     return res.status(200).json(result);
   } else {

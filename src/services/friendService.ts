@@ -1,4 +1,4 @@
-import { and, eq, or, inArray, like } from "drizzle-orm";
+import { and, eq, or, inArray, like, aliasedTable } from "drizzle-orm";
 import { db } from "../db/db";
 import { friend, user, friendRequest } from "../db/schema";
 import logger from "../lib/logger";
@@ -178,5 +178,75 @@ export async function getFriends(userId: string) {
   } catch (error) {
     friendServiceLogger.error({ error }, "Error while fetching friends.");
     return { success: false, message: "Failed to fetch friends." };
+  }
+}
+
+export async function getReceivedFriendRequests(userId: string) {
+  try {
+    const senderAlias = aliasedTable(user, "sender");
+    const receiverAlias = aliasedTable(user, "receiver");
+
+    const requests = await db
+      .select({
+        friendRequest: friendRequest,
+        sender: senderAlias,
+        receiver: receiverAlias,
+      })
+      .from(friendRequest)
+      .innerJoin(senderAlias, eq(friendRequest.senderId, senderAlias.id))
+      .innerJoin(receiverAlias, eq(friendRequest.receiverId, receiverAlias.id))
+      .where(eq(friendRequest.receiverId, userId));
+
+    const formatted = requests.map((r) => ({
+      ...r.friendRequest,
+      sender: r.sender,
+      receiver: r.receiver,
+    }));
+
+    return { success: true, data: formatted };
+  } catch (error) {
+    friendServiceLogger.error(
+      { userId, error },
+      "Error occurred while fetching received friend requests"
+    );
+    return {
+      success: false,
+      message: "Error occurred while fetching received friend requests",
+    };
+  }
+}
+
+export async function getSentFriendRequests(userId: string) {
+  try {
+    const senderAlias = aliasedTable(user, "sender");
+    const receiverAlias = aliasedTable(user, "receiver");
+
+    const requests = await db
+      .select({
+        friendRequest: friendRequest,
+        sender: senderAlias,
+        receiver: receiverAlias,
+      })
+      .from(friendRequest)
+      .innerJoin(senderAlias, eq(friendRequest.senderId, senderAlias.id))
+      .innerJoin(receiverAlias, eq(friendRequest.receiverId, receiverAlias.id))
+      .where(eq(friendRequest.senderId, userId));
+
+    const formatted = requests.map((r) => ({
+      ...r.friendRequest,
+      sender: r.sender,
+      receiver: r.receiver,
+    }));
+
+    return { success: true, data: formatted };
+  } catch (error) {
+    friendServiceLogger.error(
+      { userId, error },
+      "Error occurred while fetching sent friend requests"
+    );
+    return {
+      success: false,
+      message: "Error occurred while fetching sent friend requests",
+    };
   }
 }

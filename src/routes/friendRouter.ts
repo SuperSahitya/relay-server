@@ -5,6 +5,8 @@ import {
   getFriendsController,
   handleFriendRequestController,
   deleteFriendController,
+  getReceivedFriendRequestsController,
+  getSentFriendRequestsController,
 } from "../controllers/friendController";
 
 const friendRouter = Router();
@@ -20,6 +22,17 @@ friendRouter.delete(
   "/friends/:friendId",
   authMiddleware,
   deleteFriendController
+);
+friendRouter.get(
+  "/friends/requests",
+  authMiddleware,
+  getReceivedFriendRequestsController
+);
+
+friendRouter.get(
+  "/friends/sent",
+  authMiddleware,
+  getSentFriendRequestsController
 );
 
 export default friendRouter;
