@@ -18,7 +18,7 @@ import searchRouter from "./routes/searchRouter";
 import userRouter from "./routes/userRouter";
 import { redis, removeUserSocket, setUserSocket } from "./lib/redis";
 import { createAdapter } from "@socket.io/redis-adapter";
-import { initializeProducer } from "./kafka";
+import { createTopics, initializeProducer } from "./kafka";
 import { startMessageConsumer } from "./services/messageService";
 
 const PORT = process.env.PORT || 5000;
@@ -31,11 +31,26 @@ async function startServer() {
     const pubClient = redis;
     const subClient = redis.duplicate();
 
-    await pubClient.connect();
-    await subClient.connect();
+    logger.info("Connecting to Redis...");
+    if (pubClient.status === "wait") {
+      await pubClient.connect();
+    }
+    if (subClient.status === "wait") {
+      await subClient.connect();
+    }
+    logger.info("Connected to Redis.");
 
+    logger.info("Initializing Kafka Producer...");
     await initializeProducer();
+    logger.info("Initialized Kafka Producer.");
+
+    logger.info("Creating Kafka Topics...");
+    await createTopics();
+    logger.info("Created Kafka Topics.");
+
+    logger.info("Starting Message Consumer...");
     await startMessageConsumer();
+    logger.info("Started Message Consumer.");
 
     const io = new Server(httpServer, {
       cors: {
@@ -60,10 +75,11 @@ async function startServer() {
       })
     );
 
-    app.use(generalLimiter);
     app.use("/api/auth", authLimiter);
 
     app.all("/api/auth/{*any}", toNodeHandler(auth));
+
+    app.use(generalLimiter);
 
     app.use(express.json());
 
@@ -117,6 +133,7 @@ async function startServer() {
     });
   } catch (error) {
     logger.error({ error }, "Failed to start server");
+    console.error("Error details:", error);
     process.exit(1);
   }
 }

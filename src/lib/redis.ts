@@ -3,7 +3,9 @@ import logger from './logger';
 
 const redisLogger = logger.child({ module: 'redis' });
 
-export const redis = new RedisClient(process.env.REDIS_URL!);
+export const redis = new RedisClient(process.env.REDIS_URL!, {
+  lazyConnect: true,
+});
 
 redis.on('error', (err) => redisLogger.error({ err }, 'Redis error'));
 redis.on('connect', () => redisLogger.info('Redis connected'));
