@@ -111,6 +111,8 @@ async function startServer() {
 
       socketLogger.info(`Authenticated user connected`);
 
+      socket.join(authSocket.userId);
+
       await setUserSocket(authSocket.userId, authSocket.id);
 
       registerChatHandlers(io, authSocket);

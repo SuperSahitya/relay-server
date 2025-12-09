@@ -2,6 +2,7 @@ import { Server, Socket } from "socket.io";
 import { AuthenticatedSocket } from "../types";
 import logger from "../lib/logger";
 import { producer } from "../kafka";
+import { redis } from "../lib/redis";
 
 export function registerChatHandlers(io: Server, socket: AuthenticatedSocket) {
   const chatLogger = logger.child({
@@ -10,13 +11,16 @@ export function registerChatHandlers(io: Server, socket: AuthenticatedSocket) {
     userEmail: socket.email,
   });
 
-  socket.on("chat_message", async ({ receiverId, message }) => {
+  socket.on("chat_message", async ({ receiverId, message }, callback) => {
     try {
       if (!receiverId || !message?.trim()) {
         chatLogger.warn(
           { receiverId, message },
           "Invalid chat message received"
         );
+        if (typeof callback === "function") {
+          callback({ success: false, error: "Invalid message or receiver" });
+        }
         return;
       }
 
@@ -52,11 +56,18 @@ export function registerChatHandlers(io: Server, socket: AuthenticatedSocket) {
       });
 
       chatLogger.debug(messageData, "Chat message broadcasted to room");
+
+      if (typeof callback === "function") {
+        callback({ success: true, data: messageData });
+      }
     } catch (error) {
       chatLogger.error(
         { senderId: socket.id, receiverId, message },
         "Error while sending message"
       );
+      if (typeof callback === "function") {
+        callback({ success: false, error: "Failed to send message" });
+      }
     }
   });
 }

@@ -2,7 +2,7 @@ import { consumer } from "../kafka";
 import logger from "../lib/logger";
 import { db } from "../db/db";
 import { messages, MessageType } from "../db/schema";
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, asc, desc, eq, lt } from "drizzle-orm";
 
 const consumerLogger = logger.child({ module: "messageConsumer" });
 
@@ -54,7 +54,7 @@ export async function fetchMessages(
       .select()
       .from(messages)
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(desc(messages.createdAt))
+      .orderBy(asc(messages.createdAt))
       .limit(limit);
 
     if (beforeTime) {
