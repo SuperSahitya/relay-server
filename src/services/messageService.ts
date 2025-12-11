@@ -54,7 +54,7 @@ export async function fetchMessages(
       .select()
       .from(messages)
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(asc(messages.createdAt))
+      .orderBy(desc(messages.createdAt))
       .limit(limit);
 
     if (beforeTime) {
@@ -75,7 +75,7 @@ export async function fetchMessages(
 
     return {
       success: true,
-      data: messageList.reverse(),
+      data: messageList,
       hasMore: messageList.length === limit,
       cursor: messageList.length > 0 ? messageList[0].createdAt : null,
     };
