@@ -195,7 +195,12 @@ export async function getReceivedFriendRequests(userId: string) {
       .from(friendRequest)
       .innerJoin(senderAlias, eq(friendRequest.senderId, senderAlias.id))
       .innerJoin(receiverAlias, eq(friendRequest.receiverId, receiverAlias.id))
-      .where(eq(friendRequest.receiverId, userId));
+      .where(
+        and(
+          eq(friendRequest.receiverId, userId),
+          eq(friendRequest.status, "pending")
+        )
+      );
 
     const formatted = requests.map((r) => ({
       ...r.friendRequest,
@@ -230,7 +235,12 @@ export async function getSentFriendRequests(userId: string) {
       .from(friendRequest)
       .innerJoin(senderAlias, eq(friendRequest.senderId, senderAlias.id))
       .innerJoin(receiverAlias, eq(friendRequest.receiverId, receiverAlias.id))
-      .where(eq(friendRequest.senderId, userId));
+      .where(
+        and(
+          eq(friendRequest.senderId, userId),
+          eq(friendRequest.status, "pending")
+        )
+      );
 
     const formatted = requests.map((r) => ({
       ...r.friendRequest,
