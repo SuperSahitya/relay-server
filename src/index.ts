@@ -9,14 +9,26 @@ import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 import { socketAuthMiddleware } from "./middlewares/socketAuth";
 import { AuthenticatedSocket } from "./types";
-import { registerChatHandlers } from "./sockets/handlers";
+import {
+  registerChatHandlers,
+  registerPresenceHandlers,
+  initializePresenceSubscription,
+} from "./sockets/handlers";
 import { authLimiter, generalLimiter } from "./middlewares/rateLimit";
 import { errorMiddleware } from "./middlewares/error";
 import friendRouter from "./routes/friendRouter";
 import messageRouter from "./routes/messageRouter";
 import searchRouter from "./routes/searchRouter";
 import userRouter from "./routes/userRouter";
-import { redis, removeUserSocket, setUserSocket } from "./lib/redis";
+import {
+  redis,
+  redisSub,
+  redisPub,
+  removeUserSocket,
+  setUserSocket,
+  setUserOnline,
+  setUserOffline,
+} from "./lib/redis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { createTopics, initializeProducer } from "./kafka";
 import { startMessageConsumer } from "./services/messageService";
@@ -37,6 +49,12 @@ async function startServer() {
     }
     if (subClient.status === "wait") {
       await subClient.connect();
+    }
+    if (redisSub.status === "wait") {
+      await redisSub.connect();
+    }
+    if (redisPub.status === "wait") {
+      await redisPub.connect();
     }
     logger.info("Connected to Redis.");
 
@@ -115,13 +133,19 @@ async function startServer() {
 
       await setUserSocket(authSocket.userId, authSocket.id);
 
+      await setUserOnline(authSocket.userId);
+
       registerChatHandlers(io, authSocket);
+      registerPresenceHandlers(io, authSocket);
 
       socket.on("disconnect", async () => {
         socketLogger.info(`User disconnected`);
         await removeUserSocket(authSocket.userId);
+        await setUserOffline(authSocket.userId);
       });
     });
+
+    initializePresenceSubscription(io);
 
     httpServer.listen(PORT, () => {
       logger.info(

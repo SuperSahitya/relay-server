@@ -181,6 +181,32 @@ export async function getFriends(userId: string) {
   }
 }
 
+export async function getFriendIds(
+  userId: string
+): Promise<{ success: boolean; data?: string[]; message?: string }> {
+  try {
+    const friendsAsUserA = await db
+      .select({ friendId: friend.userB })
+      .from(friend)
+      .where(eq(friend.userA, userId));
+
+    const friendsAsUserB = await db
+      .select({ friendId: friend.userA })
+      .from(friend)
+      .where(eq(friend.userB, userId));
+
+    const friendIds = [
+      ...friendsAsUserA.map((f) => f.friendId),
+      ...friendsAsUserB.map((f) => f.friendId),
+    ];
+
+    return { success: true, data: friendIds };
+  } catch (error) {
+    friendServiceLogger.error({ error }, "Error while fetching friend IDs.");
+    return { success: false, message: "Failed to fetch friend IDs." };
+  }
+}
+
 export async function getReceivedFriendRequests(userId: string) {
   try {
     const senderAlias = aliasedTable(user, "sender");

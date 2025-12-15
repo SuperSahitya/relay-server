@@ -55,10 +55,11 @@ export async function authMiddleware(
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
-    authLogger.debug(
-      { userId: session.user.id, email: session.user.email },
-      "User authenticated successfully"
-    );
+    // authLogger.debug(
+    //   { userId: session.user.id, email: session.user.email },
+    //   "User authenticated successfully"
+    // );
+    
     req.session = session.session;
     req.user = session.user;
     next();
