@@ -12,18 +12,48 @@ export async function startMessageConsumer() {
     await consumer.subscribe({ topic: "chat-messages", fromBeginning: false });
 
     await consumer.run({
-      eachMessage: async ({ topic, partition, message }) => {
-        try {
-          const messageData: MessageType = JSON.parse(
-            message.value?.toString() || "{}"
-          );
+      autoCommit: false,
+      eachBatch: async ({
+        batch,
+        resolveOffset,
+        heartbeat,
+        commitOffsetsIfNecessary,
+      }) => {
+        const validMessages: MessageType[] = [];
 
-          await db.insert(messages).values(messageData);
-
-          consumerLogger.info(messageData, "Message saved to database");
-        } catch (error) {
-          consumerLogger.error({ error, message }, "Error processing message");
+        for (const message of batch.messages) {
+          try {
+            const messageData: MessageType = JSON.parse(
+              message.value?.toString() || "{}"
+            );
+            validMessages.push(messageData);
+          } catch (error) {
+            consumerLogger.error(
+              { error, message },
+              "Error parsing message, skipping"
+            );
+          }
         }
+
+        if (validMessages.length > 0) {
+          try {
+            await db.insert(messages).values(validMessages);
+            consumerLogger.info(
+              { count: validMessages.length },
+              "Messages saved to database"
+            );
+          } catch (error) {
+            consumerLogger.error({ error }, "Error processing batch");
+            throw error;
+          }
+        }
+
+        for (const message of batch.messages) {
+          resolveOffset(message.offset);
+        }
+
+        await commitOffsetsIfNecessary();
+        await heartbeat();
       },
     });
   } catch (error) {
