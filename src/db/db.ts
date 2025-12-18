@@ -21,4 +21,6 @@ pool.on("connect", () => {
   dbLogger.debug("New PostgreSQL client connected to pool");
 });
 
+export { pool };
+
 export const db = drizzle({ client: pool });

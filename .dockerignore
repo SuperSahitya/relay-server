@@ -1,8 +1,7 @@
 node_modules
 dist
 .git
-.env
-.env.example
+.env*
 docker-compose.yml
 README.md
 npm-debug.log

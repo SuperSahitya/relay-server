@@ -30,8 +30,19 @@ import {
   setUserOffline,
 } from "./lib/redis";
 import { createAdapter } from "@socket.io/redis-adapter";
-import { createTopics, initializeProducer } from "./kafka";
+import {
+  createTopics,
+  initializeProducer,
+  producer,
+  consumer,
+  disconnectConsumer,
+  disconnectProducer,
+} from "./kafka";
 import { startMessageConsumer } from "./services/messageService";
+import { pool } from "./db/db";
+
+let shuttingDown = false;
+let isReady = false;
 
 const PORT = process.env.PORT || 5000;
 const app = express();
@@ -109,6 +120,17 @@ async function startServer() {
       res.json({ status: `server live at PORT:${PORT}` });
     });
 
+    apiRouter.get("/health", (req: Request, res: Response) => {
+      res.status(200).json({ status: "ok", ready: isReady });
+    });
+
+    apiRouter.get("/ready", (req: Request, res: Response) => {
+      if (shuttingDown || !isReady) {
+        return res.status(503).json({ status: "not ready" });
+      }
+      res.status(200).json({ status: "ready" });
+    });
+
     apiRouter.use(friendRouter);
     apiRouter.use(messageRouter);
     apiRouter.use(searchRouter);
@@ -147,7 +169,8 @@ async function startServer() {
 
     initializePresenceSubscription(io);
 
-    httpServer.listen(PORT, () => {
+    const server = httpServer.listen(PORT, () => {
+      isReady = true;
       logger.info(
         {
           port: PORT,
@@ -157,6 +180,88 @@ async function startServer() {
         "Server started successfully"
       );
     });
+
+    const gracefulShutdown = async (signal: string) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      isReady = false;
+      logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+      const forceShutdownTimeout = setTimeout(() => {
+        logger.error(
+          "Could not close connections in time, forcefully shutting down"
+        );
+        process.exit(1);
+      }, 30000);
+
+      try {
+        logger.info("Stopping HTTP server from accepting new connections...");
+        await new Promise<void>((resolve) => {
+          server.close(() => {
+            logger.info(
+              "HTTP server closed - all in-flight requests completed."
+            );
+            resolve();
+          });
+        });
+        logger.info("Stopping Kafka consumer gracefully...");
+        try {
+          await disconnectConsumer();
+          logger.info("Kafka consumer stopped and disconnected.");
+        } catch (err) {
+          logger.error({ err }, "Error stopping Kafka consumer");
+        }
+
+        logger.info("Disconnecting Kafka producer...");
+        try {
+          await disconnectProducer();
+          logger.info("Kafka producer disconnected.");
+        } catch (err) {
+          logger.error({ err }, "Error disconnecting Kafka producer");
+        }
+
+        logger.info("Closing Socket.IO connections...");
+        const sockets = await io.fetchSockets();
+        logger.info(
+          { count: sockets.length },
+          "Disconnecting Socket.IO clients"
+        );
+        await Promise.all(
+          sockets.map(async (socket) => {
+            socket.disconnect(true);
+          })
+        );
+        io.close(() => {
+          logger.info("Socket.IO server closed.");
+        });
+
+        logger.info("Closing Redis connections...");
+        const redisClients = [redis, subClient, redisPub, redisSub];
+        await Promise.allSettled(
+          redisClients.map(async (client) => {
+            if (client.status === "ready") {
+              await client.quit();
+            }
+          })
+        );
+        logger.info("Redis connections closed.");
+
+        logger.info("Closing database pool...");
+        await pool.end();
+        logger.info("Database pool closed.");
+
+        clearTimeout(forceShutdownTimeout);
+        logger.info("Graceful shutdown completed successfully.");
+        process.exit(0);
+      } catch (err) {
+        logger.error({ err }, "Error during graceful shutdown");
+        clearTimeout(forceShutdownTimeout);
+        process.exit(1);
+      }
+    };
+
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
   } catch (error) {
     logger.error({ error }, "Failed to start server");
     console.error("Error details:", error);

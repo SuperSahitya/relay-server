@@ -1,4 +1,5 @@
 import { Kafka } from "kafkajs";
+import logger from "../lib/logger";
 
 export const kafka = new Kafka({
   clientId: process.env.KAFKA_CLIENT_ID,
@@ -54,4 +55,19 @@ export async function initializeProducer() {
 
 export async function disconnectProducer() {
   await producer.disconnect();
+}
+
+const consumerLogger = logger.child({ module: "disconnectConsumer" });
+
+export async function disconnectConsumer() {
+  try {
+    consumerLogger.info("Stopping Kafka consumer gracefully...");
+    await consumer.stop();
+    consumerLogger.info("Kafka consumer stopped, disconnecting...");
+    await consumer.disconnect();
+    consumerLogger.info("Kafka consumer disconnected");
+  } catch (error) {
+    consumerLogger.error({ error }, "Error disconnecting consumer:");
+    throw error;
+  }
 }
