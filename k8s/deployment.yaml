@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay-server
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: relay-server
+  template:
+    metadata:
+      labels:
+        app: relay-server
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: relay-server
+          image: relay-server:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 5000
+
+          envFrom:
+            - configMapRef:
+                name: relay-server-env
+            - secretRef:
+                name: relay-server-secrets
+
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
